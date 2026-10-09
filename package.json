@@ -1,5 +1,5 @@
 {
-  "name": "temp_app",
+  "name": "bazardor-b14-a7",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,13 +13,16 @@
     "daisyui": "^5.7.47",
     "lucide-react": "^1.54.0",
     "next": "16.4.0",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hot-toast": "^2.6.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
