@@ -1,69 +1,79 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, type ReactNode } from "react";
 import toast from "react-hot-toast";
+import { authClient } from "@/lib/auth-client";
 
-export interface User {
+export interface AuthUser {
+  id: string;
   name: string;
   email: string;
-  image?: string;
+  image?: string | null;
 }
 
 interface AuthContextType {
-  user: User | null;
-  login: (email: string, name?: string) => void;
-  register: (name: string, email: string) => void;
-  logout: () => void;
-  updateProfile: (newName: string) => void;
+  user: AuthUser | null;
+  isLoading: boolean;
+  logout: () => Promise<void>;
+  updateProfile: (newName: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+/**
+ * Wraps the real Better Auth session in a small React context so every client
+ * component can read the signed in user without repeating the hook.
+ */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { data: session, isPending, refetch } = authClient.useSession();
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem("bazardor_user");
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem("bazardor_user");
+  const logout = useCallback(async () => {
+    await authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          refetch();
+          toast.success("সফলভাবে সাইন আউট হয়েছে!");
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message || "সাইন আউট করা যায়নি, আবার চেষ্টা করুন।");
+        },
+      },
+    });
+  }, [refetch]);
+
+  const updateProfile = useCallback(
+    async (newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed) {
+        toast.error("অনুগ্রহ করে আপনার সঠিক নাম লিখুন!");
+        return false;
       }
-    }
-  }, []);
 
-  const login = (email: string, name?: string) => {
-    const userName = name || email.split("@")[0];
-    const newUser = { name: userName, email, image: "https://api.dicebear.com/7.x/avataaars/svg?seed=" + email };
-    setUser(newUser);
-    localStorage.setItem("bazardor_user", JSON.stringify(newUser));
-    toast.success("সফলভাবে লগইন হয়েছে!");
-  };
+      const { error } = await authClient.updateUser({ name: trimmed });
 
-  const register = (name: string, email: string) => {
-    const newUser = { name, email, image: "https://api.dicebear.com/7.x/avataaars/svg?seed=" + email };
-    setUser(newUser);
-    localStorage.setItem("bazardor_user", JSON.stringify(newUser));
-    toast.success("রেজিস্ট্রেশন সফল হয়েছে!");
-  };
+      if (error) {
+        toast.error(error.message || "তথ্য আপডেট করা যায়নি!");
+        return false;
+      }
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("bazardor_user");
-    toast.success("লগআউট করা হয়েছে!");
-  };
+      await refetch();
+      toast.success("প্রোফাইল তথ্য সফলভাবে আপডেট হয়েছে!");
+      return true;
+    },
+    [refetch],
+  );
 
-  const updateProfile = (newName: string) => {
-    if (!user) return;
-    const updatedUser = { ...user, name: newName };
-    setUser(updatedUser);
-    localStorage.setItem("bazardor_user", JSON.stringify(updatedUser));
-    toast.success("প্রোফাইল আপডেট করা হয়েছে!");
-  };
+  const user: AuthUser | null = session?.user
+    ? {
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        image: session.user.image,
+      }
+    : null;
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, isLoading: isPending, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

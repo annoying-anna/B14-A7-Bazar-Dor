@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { PRODUCTS_DATA, toBengaliNumber } from "@/lib/data";
 
@@ -17,18 +17,28 @@ const CATEGORIES = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const router = useRouter();
+  const { user, isLoading, logout } = useAuth();
   const [formattedDate, setFormattedDate] = useState("");
 
+  const handleLogout = useCallback(async () => {
+    await logout();
+    router.push("/");
+    router.refresh();
+  }, [logout, router]);
+
   useEffect(() => {
-    const today = new Date();
-    const dateStr = new Intl.DateTimeFormat("bn-BD", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).format(today);
-    setFormattedDate(dateStr);
+    const timer = window.setTimeout(() => {
+      const today = new Date();
+      const dateStr = new Intl.DateTimeFormat("bn-BD", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(today);
+      setFormattedDate(dateStr);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
@@ -52,21 +62,32 @@ export default function Navbar() {
 
         {/* Right Auth Buttons / User Profile */}
         <div className="flex items-center gap-3">
-          {user ? (
+          {isLoading ? (
+            <div className="h-9 w-24 rounded-lg bg-slate-100 animate-pulse" aria-hidden="true" />
+          ) : user ? (
             <div className="flex items-center gap-3">
               <Link
                 href="/profile"
                 className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition"
               >
-                <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm">
-                  {user.name ? user.name.charAt(0).toUpperCase() : "U"}
-                </div>
+                {user.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.image}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm">
+                    {user.name ? user.name.charAt(0).toUpperCase() : "U"}
+                  </div>
+                )}
                 <span className="text-sm font-semibold text-slate-800 hidden sm:inline">
                   {user.name}
                 </span>
               </Link>
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-700 font-medium px-3.5 py-1.5 rounded-lg text-sm transition"
               >
                 সাইন আউট
