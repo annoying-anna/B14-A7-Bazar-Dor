@@ -58,5 +58,5 @@ npm run dev
 
 ## 📬 Live Submission Links
 
-- **Live Site**: `https://bazar-dor.vercel.app`
+- **Live Site**: `https://bazar-iq77ounpd-annoyed.vercel.app`
 - **GitHub Repository**: `https://github.com/your-username/B14-A7-Bazar-Dor`
