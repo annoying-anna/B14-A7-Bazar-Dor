@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import ProductCard from "@/components/ProductCard";
 import SkeletonCard from "@/components/SkeletonCard";
-import { fetchProducts } from "@/lib/api";
-import { CATEGORIES_DATA, Product } from "@/lib/data";
+import { fetchCategories, fetchProducts } from "@/lib/api";
+import { Category, Product } from "@/lib/data";
 
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
@@ -16,8 +17,9 @@ export default function HomePage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const data = await fetchProducts();
+      const [data, cats] = await Promise.all([fetchProducts(), fetchCategories()]);
       setProducts(data);
+      setCategories(cats);
       setLoading(false);
     }
     loadData();
@@ -43,7 +45,7 @@ export default function HomePage() {
             বাংলাদেশের নিত্যপ্রয়োজনীয় পণ্যের সঠিক দাম এক নজরে
           </h1>
           <p className="text-emerald-100 text-sm md:text-base leading-relaxed">
-            প্রতিদিনের বাজার দর, দরদাম উঠানামার হিসাব এবং বিভিন্ন বাজারের নিখুঁত পর্যবেক্ষণ নিয়ে আমাদের প্ল্যাটফর্ম।
+            প্রতিদিনের বাজার দর, দরদাম উঠানামার হিসাব এবং বিভিন্ন বাজারের নিখুঁত পর্যবেক্ষণ নিয়ে আমাদের প্ল্যাটফর্ম।
           </p>
           <div className="pt-2">
             <a
@@ -129,7 +131,7 @@ export default function HomePage() {
               className="w-full sm:w-48 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             >
               <option value="all">সব ক্যাটাগরি</option>
-              {CATEGORIES_DATA.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
+              {categories.map((item) => <option key={item.id} value={item.slug}>{item.name}</option>)}
             </select>
           </div>
         </div>
@@ -140,7 +142,7 @@ export default function HomePage() {
         </div>
         {!loading && visibleProducts.length === 0 && (
           <p className="rounded-2xl border border-dashed border-slate-300 bg-white py-10 text-center text-slate-500">
-            এই খোঁজে কোনো পণ্য পাওয়া যায়নি। অন্য নাম বা ক্যাটাগরি দিয়ে চেষ্টা করুন।
+            এই খোঁজে কোনো পণ্য পাওয়া যায়নি। অন্য নাম বা ক্যাটাগরি দিয়ে চেষ্টা করুন।
           </p>
         )}
       </section>

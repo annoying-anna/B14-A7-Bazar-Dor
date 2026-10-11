@@ -4,15 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { PRODUCTS_DATA, toBengaliNumber } from "@/lib/data";
+import { fetchProducts } from "@/lib/api";
+import { CATEGORIES_DATA, Product, toBengaliNumber } from "@/lib/data";
 
-const CATEGORIES = [
+const NAV_CATEGORIES = [
   { slug: "all", name: "সব পণ্য" },
-  { slug: "chal", name: "চাল" },
-  { slug: "sobji", name: "সবজি" },
-  { slug: "mach-mangsho", name: "মাছ ও মাংস" },
-  { slug: "dhim-tel", name: "ডিম ও তেল" },
-  { slug: "mosla", name: "মসলা" },
+  ...CATEGORIES_DATA.map((c) => ({ slug: c.slug, name: c.name })),
 ];
 
 export default function Navbar() {
@@ -20,6 +17,7 @@ export default function Navbar() {
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
   const [formattedDate, setFormattedDate] = useState("");
+  const [tickerProducts, setTickerProducts] = useState<Product[]>([]);
 
   const handleLogout = useCallback(async () => {
     await logout();
@@ -40,6 +38,15 @@ export default function Navbar() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  // Load real products for the marquee ticker
+  useEffect(() => {
+    fetchProducts().then((products) => {
+      setTickerProducts(products.slice(0, 16));
+    });
+  }, []);
+
+  const displayProducts = tickerProducts.length > 0 ? tickerProducts : [];
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-emerald-100 shadow-sm">
@@ -115,7 +122,7 @@ export default function Navbar() {
       {/* Middle Category Nav */}
       <nav className="bg-slate-50 border-t border-slate-200/60 overflow-x-auto scrollbar-none">
         <div className="max-w-6xl mx-auto px-4 flex items-center space-x-1 py-1.5 text-sm">
-          {CATEGORIES.map((cat) => {
+          {NAV_CATEGORIES.map((cat) => {
             const href = cat.slug === "all" ? "/#সব-পণ্য" : `/category/${cat.slug}`;
             const isActive =
               cat.slug !== "all" && pathname.startsWith(`/category/${cat.slug}`);
@@ -138,27 +145,29 @@ export default function Navbar() {
       </nav>
 
       {/* Infinite Price Ticker Marquee */}
-      <div className="bg-emerald-900 text-emerald-100 text-xs py-1.5 overflow-hidden shadow-inner">
-        <div className="animate-marquee whitespace-nowrap flex items-center space-x-6">
-          {[...PRODUCTS_DATA, ...PRODUCTS_DATA].map((item, idx) => {
-            const isRising = item.is_rising;
-            return (
-              <div key={idx} className="inline-flex items-center space-x-1.5 px-2">
-                <span>{item.emoji}</span>
-                <span className="font-semibold text-white">{item.name}:</span>
-                <span>{toBengaliNumber(item.price)} টাকা/{item.unit.replace("প্রতি ", "")}</span>
-                <span
-                  className={`px-1 rounded text-[10px] font-bold ${
-                    isRising ? "bg-emerald-700 text-emerald-200" : "bg-rose-800 text-rose-200"
-                  }`}
-                >
-                  {isRising ? "▲" : "▼"} {toBengaliNumber(Math.abs(item.change))}%
-                </span>
-              </div>
-            );
-          })}
+      {displayProducts.length > 0 && (
+        <div className="bg-emerald-900 text-emerald-100 text-xs py-1.5 overflow-hidden shadow-inner">
+          <div className="animate-marquee whitespace-nowrap flex items-center space-x-6">
+            {[...displayProducts, ...displayProducts].map((item, idx) => {
+              const isRising = item.is_rising;
+              return (
+                <div key={idx} className="inline-flex items-center space-x-1.5 px-2">
+                  <span>{item.emoji}</span>
+                  <span className="font-semibold text-white">{item.name}:</span>
+                  <span>{toBengaliNumber(item.price)} টাকা/{item.unit.replace("প্রতি ", "")}</span>
+                  <span
+                    className={`px-1 rounded text-[10px] font-bold ${
+                      isRising ? "bg-emerald-700 text-emerald-200" : "bg-rose-800 text-rose-200"
+                    }`}
+                  >
+                    {isRising ? "▲" : "▼"} {toBengaliNumber(Math.abs(item.change))}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }

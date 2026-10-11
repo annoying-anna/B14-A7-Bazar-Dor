@@ -6,13 +6,10 @@ import {
   type Product,
 } from "./data";
 
-/** Primary and fallback endpoints provided by the assignment. */
-const API_BASE_URLS = [
-  "https://api.api-store.workers.dev/api/bazardor",
-  "https://api.abcz.workers.dev/api/bazardor",
-];
+/** The official assignment API endpoint */
+const API_BASE = "https://openapi.programming-hero.com/api/bazardor";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 10000;
 
 type ApiRecord = Record<string, unknown>;
 
@@ -24,7 +21,6 @@ function toArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-/** Reads a numeric value even when the API sends Bengali digits or formatted text. */
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
 
@@ -47,102 +43,101 @@ function toText(value: unknown, fallback = ""): string {
   return fallback;
 }
 
-/** Maps an API category value (slug or Bengali name) onto a known category slug. */
-function resolveCategorySlug(value: unknown): string {
-  const text = toText(value).trim();
-  if (!text) return "";
-  const known = CATEGORIES_DATA.find((item) => item.slug === text || item.name === text);
-  return known ? known.slug : text;
-}
-
-function normalizeBazar(raw: unknown): BazarPrice | null {
-  const record = isRecord(raw) ? raw : {};
-  const name = toText(
-    record.name ?? record.bazar ?? record.bazar_name ?? record.market ?? record.market_name,
-  ).trim();
-  const price = toNumber(
-    record.price ?? record.today_price ?? record.value ?? record.dam,
-    Number.NaN,
-  );
-
-  if (!name || !Number.isFinite(price)) return null;
-  return { name, price };
-}
-
 /**
- * Converts one raw API record into the internal `Product` shape. The API field
- * names are read defensively because the assignment only documents the routes,
- * not the exact JSON keys, and the endpoints may change.
+ * The new API uses:
+ *   nameBn, today, yesterday, lastWeek, lastMonth,
+ *   change: { dir: "up"|"down"|"flat", pct: number },
+ *   markets: [{ market, division, min, max }],
+ *   categoryNameBn, categoryIcon, image (emoji)
  */
-function normalizeProduct(raw: unknown, index: number): Product | null {
+function normalizeApiProduct(raw: unknown, index: number): Product | null {
   const record = isRecord(raw) ? raw : {};
-  const name = toText(record.name ?? record.title ?? record.product_name).trim();
+
+  const name = toText(record.nameBn ?? record.name ?? record.title).trim();
   if (!name) return null;
 
-  const id = toText(record.id ?? record._id ?? record.product_id, String(index + 1));
-  const categorySlug = resolveCategorySlug(
-    record.category ?? record.category_slug ?? record.categoryName,
-  );
-  const knownCategory = CATEGORIES_DATA.find((item) => item.slug === categorySlug);
+  const id = toText(record.id ?? record._id, String(index + 1));
+  const slug = toText(record.slug, "").trim() || id;
+  const categorySlug = toText(record.category ?? record.category_slug, "").trim();
+  const categoryName = toText(record.categoryNameBn ?? record.category_name ?? record.categoryName, categorySlug);
+  const knownCategory = CATEGORIES_DATA.find((c) => c.slug === categorySlug);
 
-  const bazars = toArray(
-    record.bazars ?? record.bazar_prices ?? record.markets ?? record.bazarPrices,
-  )
-    .map(normalizeBazar)
-    .filter((bazar): bazar is BazarPrice => bazar !== null);
+  // Prices
+  const price = toNumber(record.today ?? record.price ?? record.current_price, 0);
+  const prevPrice = toNumber(record.yesterday ?? record.prev_price ?? record.previous_price, price);
 
-  const price = toNumber(record.price ?? record.current_price ?? record.today_price, 0);
-  const prevPrice = toNumber(record.prev_price ?? record.previous_price ?? record.yesterday_price, price);
-  const computedChange =
-    prevPrice > 0 ? Number((((price - prevPrice) / prevPrice) * 100).toFixed(2)) : 0;
-  const change = toNumber(record.change ?? record.price_change ?? record.change_percent, computedChange);
+  // Change — new API sends { dir: "up"|"down"|"flat", pct: number }
+  let changePct = 0;
+  let isRising = false;
+  const changeField = record.change;
+  if (isRecord(changeField)) {
+    changePct = toNumber(changeField.pct, 0);
+    isRising = toText(changeField.dir) === "up";
+  } else {
+    const rawChange = toNumber(record.change ?? record.price_change, 0);
+    changePct = rawChange;
+    isRising = rawChange > 0;
+  }
 
-  const bazarPrices = bazars.map((bazar) => bazar.price);
+  // Markets — new API: { market, division, min, max }
+  const rawMarkets = toArray(record.markets ?? record.bazars ?? record.bazar_prices);
+  const bazars: BazarPrice[] = rawMarkets
+    .filter(isRecord)
+    .reduce<BazarPrice[]>((acc, m) => {
+      const marketName = toText(m.market ?? m.name ?? m.bazar, "").trim();
+      const minVal = toNumber(m.min ?? m.price, 0);
+      const maxVal = toNumber(m.max, minVal);
+      const avgPrice = Math.round((minVal + maxVal) / 2);
+      const division = toText(m.division, "");
+      if (!marketName || !avgPrice) return acc;
+      acc.push({ name: marketName, price: avgPrice, min: minVal, max: maxVal, division });
+      return acc;
+    }, []);
+
+  const bazarPrices = bazars.map((b) => b.price);
   const minPrice = toNumber(
-    record.min_price ?? record.minPrice,
+    record.min_price,
     bazarPrices.length > 0 ? Math.min(...bazarPrices) : price,
   );
   const maxPrice = toNumber(
-    record.max_price ?? record.maxPrice,
+    record.max_price,
     bazarPrices.length > 0 ? Math.max(...bazarPrices) : price,
   );
-  const avgPrice = toNumber(
-    record.avg_price ?? record.avgPrice,
-    bazarPrices.length > 0
-      ? Number((bazarPrices.reduce((sum, item) => sum + item, 0) / bazarPrices.length).toFixed(2))
-      : price,
-  );
+  const avgPrice = bazarPrices.length > 0
+    ? Number((bazarPrices.reduce((s, v) => s + v, 0) / bazarPrices.length).toFixed(0))
+    : price;
+
+  // Emoji — new API uses `image` field for emoji
+  const emoji = toText(record.image ?? record.emoji ?? record.categoryIcon ?? record.icon, knownCategory?.icon ?? "🛒");
 
   return {
     id,
     name,
-    slug: toText(record.slug ?? record.product_slug).trim() || id,
+    slug,
     category: categorySlug,
-    category_name: toText(
-      record.category_name ?? record.categoryName,
-      knownCategory?.name ?? categorySlug,
-    ),
-    unit: toText(record.unit ?? record.unit_name, "প্রতি কেজি"),
+    category_name: categoryName,
+    unit: toText(record.unit, "কেজি"),
     price,
     prev_price: prevPrice,
-    change,
-    is_rising: typeof record.is_rising === "boolean" ? record.is_rising : change > 0,
-    emoji: toText(record.emoji ?? record.icon, knownCategory?.icon ?? "🛒"),
+    last_week: isRecord(raw) ? toNumber((raw as ApiRecord).lastWeek) : undefined,
+    last_month: isRecord(raw) ? toNumber((raw as ApiRecord).lastMonth) : undefined,
+    change: Math.abs(changePct),
+    is_rising: isRising,
+    emoji,
     min_price: minPrice,
     max_price: maxPrice,
     avg_price: avgPrice,
-    description: toText(record.description ?? record.desc).trim() || undefined,
     bazars,
   };
 }
 
 function normalizeCategory(raw: unknown, index: number): Category | null {
   const record = isRecord(raw) ? raw : {};
-  const name = toText(record.name ?? record.title).trim();
+  const name = toText(record.nameBn ?? record.name ?? record.title).trim();
   if (!name) return null;
 
-  const slug = toText(record.slug, "").trim() || resolveCategorySlug(name);
-  const known = CATEGORIES_DATA.find((item) => item.slug === slug || item.name === name);
+  const slug = toText(record.slug ?? record.id, "").trim();
+  const known = CATEGORIES_DATA.find((c) => c.slug === slug || c.name === name);
 
   return {
     id: toText(record.id ?? record._id, String(index + 1)),
@@ -153,7 +148,30 @@ function normalizeCategory(raw: unknown, index: number): Category | null {
   };
 }
 
-/** Some endpoints wrap arrays in `{ data: [...] }` or `{ products: [...] }`. */
+async function fetchApi(path: string): Promise<unknown | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    const response = await fetch(`${API_BASE}${path}`, {
+      signal: controller.signal,
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn(`[BazarDor] API ${path} returned ${response.status}`);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.warn(`[BazarDor] ${API_BASE}${path} is unavailable.`, error);
+    return null;
+  }
+}
+
 function extractList(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (isRecord(payload)) {
@@ -171,84 +189,61 @@ function extractObject(payload: unknown): unknown {
       const value = payload[key];
       if (isRecord(value)) return value;
     }
+    return payload;
   }
   return payload;
 }
 
-async function fetchApi(path: string): Promise<unknown | null> {
-  for (const baseUrl of API_BASE_URLS) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-      const response = await fetch(`${baseUrl}${path}`, {
-        signal: controller.signal,
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) continue;
-
-      const payload: unknown = await response.json();
-      if (payload) return payload;
-    } catch (error) {
-      console.warn(`[BazarDor] ${baseUrl}${path} is unavailable, trying next source.`, error);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Fetches products from the API and falls back to the bundled dataset when the
- * remote endpoints are unreachable (they are rate limited from time to time).
- */
 export async function fetchProducts(categorySlug?: string): Promise<Product[]> {
-  const path = categorySlug ? `/products?category=${encodeURIComponent(categorySlug)}` : "/products";
+  const path = categorySlug
+    ? `/products?category=${encodeURIComponent(categorySlug)}`
+    : "/products";
   const payload = await fetchApi(path);
 
-  const remote = extractList(payload)
-    .map((item, index) => normalizeProduct(item, index))
-    .filter((product): product is Product => product !== null);
+  const list = Array.isArray(payload) ? payload : extractList(payload);
+
+  const remote = list
+    .map((item, index) => normalizeApiProduct(item, index))
+    .filter((p): p is Product => p !== null);
 
   if (remote.length > 0) {
     return categorySlug
-      ? remote.filter((product) => product.category === categorySlug)
+      ? remote.filter((p) => p.category === categorySlug)
       : remote;
   }
 
   const fallback = categorySlug
-    ? PRODUCTS_DATA.filter((product) => product.category === categorySlug)
+    ? PRODUCTS_DATA.filter((p) => p.category === categorySlug)
     : PRODUCTS_DATA;
-
-  return fallback.map((product) => ({ ...product }));
+  return fallback.map((p) => ({ ...p }));
 }
 
 export async function fetchSingleProduct(slug: string): Promise<Product | null> {
+  // Try direct slug lookup first
   const direct = await fetchApi(`/products/${encodeURIComponent(slug)}`);
-  const normalizedDirect = normalizeProduct(extractObject(direct), 0);
-
-  if (normalizedDirect && normalizedDirect.name) {
-    return normalizedDirect;
+  if (direct) {
+    const obj = isRecord(direct) ? extractObject(direct) : direct;
+    const normalized = normalizeApiProduct(obj, 0);
+    if (normalized && normalized.name) return normalized;
   }
 
-  // The API only guarantees numeric ids for `/products/:id`, so the slug is
-  // resolved against the full product list as a second attempt.
+  // Fall back to filtering the full product list
   const list = await fetchProducts();
-  const match = list.find((product) => product.slug === slug || product.id === slug);
+  const match = list.find((p) => p.slug === slug || p.id === slug);
   if (match) return match;
 
-  const localMatch = PRODUCTS_DATA.find((product) => product.slug === slug || product.id === slug);
+  const localMatch = PRODUCTS_DATA.find((p) => p.slug === slug || p.id === slug);
   return localMatch ? { ...localMatch } : null;
 }
 
 export async function fetchCategories(): Promise<Category[]> {
   const payload = await fetchApi("/categories");
 
-  const remote = extractList(payload)
-    .map((item, index) => normalizeCategory(item, index))
-    .filter((category): category is Category => category !== null);
+  const list = Array.isArray(payload) ? payload : extractList(payload);
 
-  return remote.length > 0 ? remote : CATEGORIES_DATA.map((category) => ({ ...category }));
+  const remote = list
+    .map((item, index) => normalizeCategory(item, index))
+    .filter((c): c is Category => c !== null);
+
+  return remote.length > 0 ? remote : CATEGORIES_DATA.map((c) => ({ ...c }));
 }

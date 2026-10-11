@@ -4,8 +4,8 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import ProductCard from "@/components/ProductCard";
 import SkeletonCard from "@/components/SkeletonCard";
-import { fetchProducts } from "@/lib/api";
-import { Product, CATEGORIES_DATA } from "@/lib/data";
+import { fetchCategories, fetchProducts } from "@/lib/api";
+import { Category, Product } from "@/lib/data";
 
 export default function CategoryPage({
   params,
@@ -14,34 +14,34 @@ export default function CategoryPage({
 }) {
   const { slug } = use(params);
   const [products, setProducts] = useState<Product[]>([]);
+  const [category, setCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(true);
   const [sortOption, setSortOption] = useState<string>("default");
-
-  const category = CATEGORIES_DATA.find((c) => c.slug === slug);
 
   useEffect(() => {
     async function loadCategoryProducts() {
       setLoading(true);
-      const data = await fetchProducts(slug);
+      const [data, cats] = await Promise.all([
+        fetchProducts(slug),
+        fetchCategories(),
+      ]);
       setProducts(data);
+      const found = cats.find((c) => c.slug === slug) ?? null;
+      setCategory(found);
       setLoading(false);
     }
     loadCategoryProducts();
   }, [slug]);
 
-  // Challenge C1: Sort control supporting Bengali numbers / numeric values
+  // Challenge C1: Sort control
   const sortedProducts = [...products].sort((a, b) => {
-    if (sortOption === "low-to-high") {
-      return a.price - b.price;
-    }
-    if (sortOption === "high-to-low") {
-      return b.price - a.price;
-    }
-    return 0; // default order
+    if (sortOption === "low-to-high") return a.price - b.price;
+    if (sortOption === "high-to-low") return b.price - a.price;
+    return 0;
   });
 
   // Empty state handling
-  if (!loading && (!category || products.length === 0)) {
+  if (!loading && products.length === 0) {
     return (
       <div className="text-center py-20 space-y-5 max-w-md mx-auto">
         <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">
@@ -49,7 +49,7 @@ export default function CategoryPage({
         </div>
         <h2 className="text-2xl font-bold text-slate-800">ক্যাটাগরি পাওয়া যায়নি</h2>
         <p className="text-slate-600 text-sm">
-          আপনার নির্বাচন করা ক্যাটাগরিতে এই মুহূর্তে কোনো তথ্য নেই অথবা লিঙ্কটি সঠিক নয়।
+          আপনার নির্বাচন করা ক্যাটাগরিতে এই মুহূর্তে কোনো তথ্য নেই অথবা লিঙ্কটি সঠিক নয়।
         </p>
         <div className="pt-2">
           <Link

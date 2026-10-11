@@ -128,7 +128,8 @@ export default function ProductDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Price Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
           <span className="text-xs font-bold text-emerald-700 block mb-1">সর্বনিম্ন দাম</span>
           <span className="text-2xl font-extrabold text-emerald-900">
@@ -147,8 +148,15 @@ export default function ProductDetailPage({
             {toBengaliNumber(product.avg_price)} টাকা
           </span>
         </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+          <span className="text-xs font-bold text-amber-700 block mb-1">গতকালের দাম</span>
+          <span className="text-2xl font-extrabold text-amber-900">
+            {toBengaliNumber(product.prev_price)} টাকা
+          </span>
+        </div>
       </div>
 
+      {/* Market-wise Price Table */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
         <h2 className="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
           <span>🏪</span> বাজারভিত্তিক আজকের দাম
@@ -158,22 +166,26 @@ export default function ProductDetailPage({
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase">
                 <th className="py-3 px-4">বাজারের নাম</th>
-                <th className="py-3 px-4">পণ্যের নাম</th>
-                <th className="py-3 px-4">একক</th>
-                <th className="py-3 px-4 text-right">আজকের দর (টাকা)</th>
+                <th className="py-3 px-4">বিভাগ</th>
+                <th className="py-3 px-4 text-right">সর্বনিম্ন (টাকা)</th>
+                <th className="py-3 px-4 text-right">সর্বোচ্চ (টাকা)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium">
               {product.bazars && product.bazars.length > 0 ? (
-                product.bazars.map((bazar) => (
-                  <tr key={bazar.name} className="hover:bg-slate-50/80 transition">
+                product.bazars.map((bazar, idx) => (
+                  <tr key={`${bazar.name}-${idx}`} className="hover:bg-slate-50/80 transition">
                     <td className="py-3 px-4 font-semibold text-slate-800">
                       <span className="text-emerald-600">📍</span> {bazar.name}
                     </td>
-                    <td className="py-3 px-4 text-slate-600">{product.name}</td>
-                    <td className="py-3 px-4 text-slate-500">{product.unit}</td>
-                    <td className="py-3 px-4 text-right font-bold text-slate-900">
-                      {toBengaliNumber(bazar.price)} ৳
+                    <td className="py-3 px-4 text-slate-500">
+                      {bazar.division || "—"}
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold text-emerald-700">
+                      {toBengaliNumber(bazar.min ?? bazar.price)} ৳
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold text-rose-700">
+                      {toBengaliNumber(bazar.max ?? bazar.price)} ৳
                     </td>
                   </tr>
                 ))
@@ -188,6 +200,37 @@ export default function ProductDetailPage({
           </table>
         </div>
       </div>
+
+      {/* Price History */}
+      {(product.last_week || product.last_month) && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <h2 className="text-xl font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
+            <span>📈</span> দামের ধারাবাহিক তথ্য
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+              <span className="text-xs font-bold text-slate-500 block mb-1">আজ</span>
+              <span className="text-xl font-extrabold text-slate-900">{toBengaliNumber(product.price)} ৳</span>
+            </div>
+            <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+              <span className="text-xs font-bold text-slate-500 block mb-1">গতকাল</span>
+              <span className="text-xl font-extrabold text-slate-900">{toBengaliNumber(product.prev_price)} ৳</span>
+            </div>
+            {product.last_week ? (
+              <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+                <span className="text-xs font-bold text-slate-500 block mb-1">গত সপ্তাহ</span>
+                <span className="text-xl font-extrabold text-slate-900">{toBengaliNumber(product.last_week)} ৳</span>
+              </div>
+            ) : null}
+            {product.last_month ? (
+              <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+                <span className="text-xs font-bold text-slate-500 block mb-1">গত মাস</span>
+                <span className="text-xl font-extrabold text-slate-900">{toBengaliNumber(product.last_month)} ৳</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
